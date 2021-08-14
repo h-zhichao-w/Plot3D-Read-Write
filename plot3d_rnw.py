@@ -121,6 +121,7 @@ class Mesh:
             self.BlockNumber = int.from_bytes(b, byteorder=sys.byteorder)
             print('The number of block is {}'.format(self.BlockNumber))
 
+            # 读取block_list
             b = []
             for i in range(self.BlockNumber):
                 for j in range(self.DIM):
@@ -132,39 +133,49 @@ class Mesh:
             )
             self.block_list = block_list
             print('block_list is {}'.format(self.block_list))
-
+            # 初始化Mesh
             self.MeshInit()
 
+            # 读取每个块信息
             for block_index in range(self.BlockNumber):
                 block = self.Block[block_index]
+                # 获取block_list信息
+                # block.id, block.jd, block.kd = \
+                #     self.block_list[self.DIM * ibl :  self.DIM * (ibl + 1)]
                 point_num = block.id * block.jd * block.kd
                 print('point number of Block{} is {}'.format(block_index, point_num))
 
+                # 获得x
                 b = []
                 for i in range(point_num):
-                    b.append(mesh_file.read(self.accuracy[0]))
+                    b.append(struct.unpack(self.accuracy[1], mesh_file.read(self.accuracy[0])))
+                # print(line)
                 x_list = np.array(
-                    [struct.unpack(self.accuracy[1], im) for im in b]
+                    b
                 )
                 x_list = x_list.reshape([len(x_list)])
                 print('x_list of Block{} is {}, the shape is {}.'.format(block_index, x_list, x_list.shape))
                 block.setX(x_list)
 
+                # 获得y
                 b = []
                 for i in range(point_num):
-                    b.append(mesh_file.read(self.accuracy[0]))
+                    b.append(struct.unpack(self.accuracy[1], mesh_file.read(self.accuracy[0])))
+                # print(line)
                 y_list = np.array(
-                    [struct.unpack(self.accuracy[1], im) for im in b]
+                    b
                 )
                 y_list = y_list.reshape([len(y_list)])
                 print('y_list of Block{} is {}, the shape is {}.'.format(block_index, y_list, y_list.shape))
                 block.setY(y_list)
 
+                # 获得z
                 b = []
                 for i in range(point_num):
-                    b.append(mesh_file.read(self.accuracy[0]))
+                    b.append(struct.unpack(self.accuracy[1], mesh_file.read(self.accuracy[0])))
+                # print(line)
                 z_list = np.array(
-                    [struct.unpack(self.accuracy[1], im) for im in b]
+                    b
                 )
                 z_list = z_list.reshape([len(z_list)])
                 print('z_list of Block{} is {}, the shape is {}.'.format(block_index, z_list, z_list.shape))
@@ -221,14 +232,17 @@ class Field:
         and save the values of variables in the corresponding block object
         """
         with open(self.filename, 'rb') as field_file:
+            # 读取块号
             b = field_file.read(int_len)
             self.BlockNumber = int.from_bytes(b, byteorder=sys.byteorder)
             print('The number of block is {}'.format(self.BlockNumber))
 
+            # 读取block_list
             b = []
             for i in range(self.BlockNumber):
                 for j in range(self.DIM + 1):
                     if j == self.DIM:
+                        # 读取变量个数
                         self.VarNumber = int.from_bytes(field_file.read(int_len), byteorder=sys.byteorder)
                     else: b.append(field_file.read(int_len))
                 if self.DIM == 2:
@@ -240,23 +254,32 @@ class Field:
             print('block_list is {}'.format(self.block_list))
             print('VarNumber is {}'.format(self.VarNumber))
 
+            # 初始化Field
             self.FieldInit()
 
+            # 读取每个块信息
             for block_index in range(self.BlockNumber):
                 block = self.Block[block_index]
+                # 获取block_list信息
+                # block.id, block.jd, block.kd = \
+                #     self.block_list[self.DIM * block_index:self.DIM * (block_index + 1)]
                 point_num = block.id * block.jd * block.kd
                 print('point number of Block{} is {}'.format(block_index, point_num))
+                # num = math.ceil(point_num / 4)
 
+                # 获取变量
+                # 修改存储变量的np.array形状
                 block.var_list = np.zeros([self.VarNumber, point_num])
+                # 遍历每一种变量
                 for v in range(self.VarNumber):
                     b = []
                     for i in range(point_num):
-                        b.append(field_file.read(self.accuracy[0]))
+                        b.append(struct.unpack(self.accuracy[1], field_file.read(self.accuracy[0])))
                     v_list = np.array(
-                        [struct.unpack(self.accuracy[1], im) for im in b]
+                        b
                     )
                     v_list = v_list.reshape([len(v_list)])
-
+                    # 将v_list中对应位置替换为要记录的数据
                     block.var_list[v] = v_list
 
                 print('Block{}\'s variable list is {}, and the shape of it is {}.'.format(
@@ -276,9 +299,16 @@ class Field:
                     field_file.write(struct.pack('i', j))
                 field_file.write(self.VarNumber.to_bytes(4, byteorder=sys.byteorder))
 
-            for i in outcome:
-                for j in i:
-                    field_file.write((struct.pack(self.accuracy[1], j)))
+            index = 0
+            for i in range(mesh.BlockNumber):
+                point_num = mesh.block_list[i * 3] * mesh.block_list[i * 3 + 1] * mesh.block_list[i * 3 + 2]
+                for v in range(self.VarNumber):
+                    for j in range(point_num):
+                        if str(outcome[v][index + j]).lower() == 'nan':
+                            field_file.write((struct.pack(self.accuracy[1], 0)))
+                        else:
+                            field_file.write((struct.pack(self.accuracy[1], outcome[v][index + j])))
+                index += point_num
 
     def converge(self):
         """
